@@ -44,22 +44,21 @@ func init() {
 }
 
 func run(cmd *cobra.Command, args []string) {
-
-	fmt.Println(source_path)
-	fmt.Println(destination_path)
-
 	dirs, err := os.ReadDir(source_path)
 	if err != nil {
 		panic(err)
 	}
 
-	for i, dir := range dirs {
+	for i := 0; i < len(dirs); i++ {
+		dir := dirs[i]
 		duplicates := getDuplicates(dir, i, dirs)
 
 		fmt.Println(dir.Name())
 		for _, duplicate := range duplicates {
 			fmt.Printf("%s - duplicate\n", duplicate.Name())
 		}
+
+		i += len(duplicates)
 	}
 }
 
@@ -67,10 +66,8 @@ func getDuplicates(dir os.DirEntry, index int, dirs []os.DirEntry) []os.DirEntry
 	duplicatePattern := regexp.MustCompile(`^` + regexp.QuoteMeta(dir.Name()) + `\(\d+\)$`)
 
 	var duplicates []os.DirEntry
-	for i, candidate := range dirs {
-		if i < index {
-			continue
-		}
+	for i := index + 1; i < len(dirs); i++ {
+		candidate := dirs[i]
 		if candidate.Name() == dir.Name() {
 			continue
 		}

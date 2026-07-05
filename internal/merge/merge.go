@@ -10,6 +10,7 @@ type Result struct {
 	FolderName           string
 	DuplicateFolderNames []string
 	CopiedFilePaths      []string
+	Failures             []CopyFailure
 }
 
 func Directories(sourcePath, destinationPath string) ([]Result, error) {
@@ -45,34 +46,30 @@ func Directories(sourcePath, destinationPath string) ([]Result, error) {
 			duplicateFolderNames = append(duplicateFolderNames, duplicate.Name())
 		}
 
-		copiedFilePaths, err := mergeFolderGroup(sourceRoot, destinationRoot, entry.Name(), duplicateFolderNames)
-		if err != nil {
-			return results, err
-		}
+		copiedFilePaths, failures := mergeFolderGroup(sourceRoot, destinationRoot, entry.Name(), duplicateFolderNames)
 
 		results = append(results, Result{
 			FolderName:           entry.Name(),
 			DuplicateFolderNames: duplicateFolderNames,
 			CopiedFilePaths:      copiedFilePaths,
+			Failures:             failures,
 		})
 	}
 
 	return results, nil
 }
 
-func mergeFolderGroup(sourceRoot, destinationRoot, folderName string, duplicateFolderNames []string) ([]string, error) {
+func mergeFolderGroup(sourceRoot, destinationRoot, folderName string, duplicateFolderNames []string) ([]string, []CopyFailure) {
 	destDir := filepath.Join(destinationRoot, folderName)
 
 	var copiedFilePaths []string
-	if err := copyTreeInto(filepath.Join(sourceRoot, folderName), destDir, &copiedFilePaths); err != nil {
-		return nil, err
-	}
+	var failures []CopyFailure
+
+	copyTreeInto(filepath.Join(sourceRoot, folderName), destDir, &copiedFilePaths, &failures)
 
 	for _, duplicateFolderName := range duplicateFolderNames {
-		if err := copyTreeInto(filepath.Join(sourceRoot, duplicateFolderName), destDir, &copiedFilePaths); err != nil {
-			return nil, err
-		}
+		copyTreeInto(filepath.Join(sourceRoot, duplicateFolderName), destDir, &copiedFilePaths, &failures)
 	}
 
-	return copiedFilePaths, nil
+	return copiedFilePaths, failures
 }

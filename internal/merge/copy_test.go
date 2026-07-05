@@ -46,12 +46,9 @@ func TestCopyTreeIntoMergesNestedNameClashes(t *testing.T) {
 	writeSourceFile(t, src, "cameraB/Screenshots/shot.png", "b-shot")
 
 	var copiedFilePaths []string
-	if err := copyTreeInto(filepath.Join(src, "cameraA"), dest, &copiedFilePaths); err != nil {
-		t.Fatalf("copyTreeInto cameraA: %v", err)
-	}
-	if err := copyTreeInto(filepath.Join(src, "cameraB"), dest, &copiedFilePaths); err != nil {
-		t.Fatalf("copyTreeInto cameraB: %v", err)
-	}
+	var failures []CopyFailure
+	copyTreeInto(filepath.Join(src, "cameraA"), dest, &copiedFilePaths, &failures)
+	copyTreeInto(filepath.Join(src, "cameraB"), dest, &copiedFilePaths, &failures)
 
 	assertFileContent(t, filepath.Join(dest, "photo1.jpg"), "a1")
 	assertFileContent(t, filepath.Join(dest, "photo1(1).jpg"), "b1")
@@ -60,6 +57,46 @@ func TestCopyTreeIntoMergesNestedNameClashes(t *testing.T) {
 
 	if len(copiedFilePaths) != 4 {
 		t.Errorf("len(copiedFilePaths) = %d, want 4 (%v)", len(copiedFilePaths), copiedFilePaths)
+	}
+	if len(failures) != 0 {
+		t.Errorf("len(failures) = %d, want 0 (%v)", len(failures), failures)
+	}
+}
+
+func TestCopyTreeIntoSkipsUnreadableFilesAndKeepsGoing(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("running as root, file permissions have no effect")
+	}
+
+	src := t.TempDir()
+	dest := t.TempDir()
+
+	writeSourceFile(t, src, "before.jpg", "before")
+	writeSourceFile(t, src, "corrupt.jpg", "unreadable")
+	writeSourceFile(t, src, "after.jpg", "after")
+
+	unreadablePath := filepath.Join(src, "corrupt.jpg")
+	if err := os.Chmod(unreadablePath, 0o000); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(unreadablePath, 0o644) })
+
+	var copiedFilePaths []string
+	var failures []CopyFailure
+	copyTreeInto(src, dest, &copiedFilePaths, &failures)
+
+	assertFileContent(t, filepath.Join(dest, "before.jpg"), "before")
+	assertFileContent(t, filepath.Join(dest, "after.jpg"), "after")
+
+	if _, err := os.Stat(filepath.Join(dest, "corrupt.jpg")); !os.IsNotExist(err) {
+		t.Errorf("corrupt.jpg should not exist in the destination, stat err = %v", err)
+	}
+
+	if len(failures) != 1 {
+		t.Fatalf("len(failures) = %d, want 1 (%v)", len(failures), failures)
+	}
+	if failures[0].Path != unreadablePath {
+		t.Errorf("failures[0].Path = %q, want %q", failures[0].Path, unreadablePath)
 	}
 }
 

@@ -8,55 +8,66 @@ import (
 	"slices"
 )
 
-func copyTreeInto(srcDir, destDir string, copiedFilePaths *[]string) error {
+type CopyFailure struct {
+	Path string
+	Err  error
+}
+
+func copyTreeInto(srcDir, destDir string, copiedFilePaths *[]string, failures *[]CopyFailure) {
 	if err := os.MkdirAll(destDir, 0o755); err != nil {
-		return fmt.Errorf("creating directory %s: %w", destDir, err)
+		*failures = append(*failures, CopyFailure{Path: srcDir, Err: fmt.Errorf("creating directory %s: %w", destDir, err)})
+		return
 	}
 
 	entries, err := os.ReadDir(srcDir)
 	if err != nil {
-		return fmt.Errorf("reading directory %s: %w", srcDir, err)
+		*failures = append(*failures, CopyFailure{Path: srcDir, Err: fmt.Errorf("reading directory %s: %w", srcDir, err)})
+		return
 	}
 
 	for _, entry := range entries {
 		srcPath := filepath.Join(srcDir, entry.Name())
 
 		if entry.IsDir() {
-			if err := copyTreeInto(srcPath, filepath.Join(destDir, entry.Name()), copiedFilePaths); err != nil {
-				return err
-			}
+			copyTreeInto(srcPath, filepath.Join(destDir, entry.Name()), copiedFilePaths, failures)
 			continue
 		}
 
-		if err := copyFileInto(srcPath, destDir, entry.Name(), copiedFilePaths); err != nil {
-			return err
-		}
+		copyFileInto(srcPath, destDir, entry.Name(), copiedFilePaths, failures)
 	}
-
-	return nil
 }
 
-func copyFileInto(srcPath, destDir, fileName string, copiedFilePaths *[]string) error {
+func copyFileInto(srcPath, destDir, fileName string, copiedFilePaths *[]string, failures *[]CopyFailure) {
 	destPath := uniqueDestPath(destDir, fileName, *copiedFilePaths)
 
 	src, err := os.Open(srcPath)
 	if err != nil {
-		return fmt.Errorf("opening %s: %w", srcPath, err)
+		*failures = append(*failures, CopyFailure{Path: srcPath, Err: fmt.Errorf("opening %s: %w", srcPath, err)})
+		return
 	}
 	defer src.Close()
 
 	dst, err := os.Create(destPath)
 	if err != nil {
-		return fmt.Errorf("creating %s: %w", destPath, err)
+		*failures = append(*failures, CopyFailure{Path: srcPath, Err: fmt.Errorf("creating %s: %w", destPath, err)})
+		return
 	}
-	defer dst.Close()
 
-	if _, err := io.Copy(dst, src); err != nil {
-		return fmt.Errorf("copying %s to %s: %w", srcPath, destPath, err)
+	_, copyErr := io.Copy(dst, src)
+	closeErr := dst.Close()
+
+	if copyErr != nil {
+		_ = os.Remove(destPath)
+		*failures = append(*failures, CopyFailure{Path: srcPath, Err: fmt.Errorf("copying %s to %s: %w", srcPath, destPath, copyErr)})
+		return
+	}
+	if closeErr != nil {
+		_ = os.Remove(destPath)
+		*failures = append(*failures, CopyFailure{Path: srcPath, Err: fmt.Errorf("closing %s: %w", destPath, closeErr)})
+		return
 	}
 
 	*copiedFilePaths = append(*copiedFilePaths, destPath)
-	return nil
 }
 
 func uniqueDestPath(destDir, fileName string, copiedFilePaths []string) string {

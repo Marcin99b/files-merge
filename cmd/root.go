@@ -46,6 +46,8 @@ func run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	failureCount := 0
+
 	for _, result := range results {
 		fmt.Println(result.FolderName)
 		for _, duplicateFolderName := range result.DuplicateFolderNames {
@@ -54,6 +56,14 @@ func run(cmd *cobra.Command, args []string) error {
 		for _, copiedFilePath := range result.CopiedFilePaths {
 			fmt.Println(copiedFilePath)
 		}
+		for _, failure := range result.Failures {
+			fmt.Printf("SKIPPED: %s (%v)\n", failure.Path, failure.Err)
+		}
+		failureCount += len(result.Failures)
+	}
+
+	if failureCount > 0 {
+		fmt.Printf("\n%d file(s) could not be copied and were skipped, see SKIPPED entries above.\n", failureCount)
 	}
 
 	return nil

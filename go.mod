@@ -1,4 +1,4 @@
-module Marcin99b/files-merge
+module github.com/Marcin99b/files-merge
 
 go 1.26.4
 
